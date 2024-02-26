@@ -328,12 +328,7 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
             i
         ]  # currently we assume the same composition for all components
 
-        try:
-            Qsca = load_lqsca(
-                lqq_dir, composition, rdust, rdust_boundaries, lambda_disk
-            )
-        except:
-            breakpoint()
+        Qsca = load_lqsca(lqq_dir, composition, rdust, rdust_boundaries, lambda_disk)
         # Qsca is now nsizes x nlambda_disk array
 
         # Now distribute a grid of points and calculate disk flux at all points
