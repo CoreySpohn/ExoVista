@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools", "wheel", "Cython"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ExoVista"
+version = "2.4"
+description = "TODO"
+authors = [{name = "Alex Howe", email = "alex.r.howe@nasa.gov"}]
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "astropy",
+    "Cython"
+]
