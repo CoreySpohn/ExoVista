@@ -5,12 +5,12 @@ ext_modules = cythonize(
     [
         Extension(
             "ExoVista.wrapImage",
-            sources=["ExoVista/wrapImage.pyx", "ExoVista/Image.cpp"],
+            sources=["src/wrapImage.pyx", "src/Image.cpp"],
             language="c++",
         ),
         Extension(
             "ExoVista.wrapIntegrator",
-            sources=["ExoVista/wrapIntegrator.pyx", "ExoVista/Integrator.cpp"],
+            sources=["src/wrapIntegrator.pyx", "src/Integrator.cpp"],
             language="c++",
         ),
     ]
@@ -19,7 +19,8 @@ ext_modules = cythonize(
 setup(
     name="ExoVista",
     version="2.4",
-    packages=find_packages(),
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     ext_modules=ext_modules,
     package_data={"ExoVista": ["data/*"]},
     include_package_data=True,

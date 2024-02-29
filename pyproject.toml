@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ExoVista"
 version = "2.4"
-description = "TODO"
+description = "ExoVista is a hybrid Python/C++ software package based on an earlier IDL/C iteration that generates synthetic exoplanetary systems."
 authors = [{name = "Alex Howe", email = "alex.r.howe@nasa.gov"}]
 dependencies = [
     "numpy",
