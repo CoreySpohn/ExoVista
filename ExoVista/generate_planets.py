@@ -1,3 +1,5 @@
+from importlib import resources
+
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp2d
@@ -8,7 +10,8 @@ from ExoVista.constants import maxnplanets, pllabel
 settings = Settings.Settings()
 
 # Read in bins for planet types.
-fbound = open("planetbins.dat", "r")
+planet_bins = resources.files("ExoVista").joinpath("data/planetbins.dat")
+fbound = open(planet_bins, "r")
 line = fbound.readline().strip()
 if line != "Radius":
     print("Error: wrong format in planetbins.dat")
@@ -79,6 +82,7 @@ def generate_planets(
     addearth=False,
     usebins=False,
     subdivide=1,
+    force_earth=False,
 ):
     print("Generating planets...")
     settings = settings
@@ -248,6 +252,7 @@ def generate_planets(
     nplanets = 0
     n_nochange = 0
     jj = 0
+    stars_with_Earths = 0
 
     while nplanets < nexpected and n_nochange < 50 and jj < 200:
         print("Iteration number: ", jj)
@@ -256,7 +261,15 @@ def generate_planets(
 
         # First, add some random planets based on occurrence rates
         plorb, hillsphere_flag = add_planets(
-            stars, plorb, expected, medge, aedge, hillsphere_flag, settings.randrad, rng
+            stars,
+            plorb,
+            expected,
+            medge,
+            aedge,
+            hillsphere_flag,
+            settings.randrad,
+            rng,
+            force_earth,
         )
 
         # Number of stars with new planets
@@ -264,7 +277,9 @@ def generate_planets(
         # print('{0:d} systems changed.'.format(nnew))
 
         # Now remove any unstable ones
-        plorb = remove_unstable_planets(stars, plorb, hillsphere_flag)
+        plorb = remove_unstable_planets(
+            stars, plorb, hillsphere_flag, force_earth=force_earth
+        )
 
         # Number of stable planets
         nplanets = 0
@@ -279,6 +294,17 @@ def generate_planets(
             n_nochange = 0  # (No change gets stuck for small target lists.)
         jj += 1
         # print('No increase for {0:d} iterations.\n'.format(n_nochange))
+        if force_earth:
+            all_a_vals = plorb[:, :, pllabel.index("a")]
+            scaled_a_vals = (
+                all_a_vals.T / np.sqrt(stars["Lstar"].values.astype(float))
+            ).T
+            meet_a_criteria = (0.95 <= scaled_a_vals) & (scaled_a_vals < 1.67)
+            all_R_vals = plorb[:, :, pllabel.index("R")]
+            meet_R_criteria = (0.8 <= all_R_vals) & (all_R_vals < 1.4)
+            habitable_planets = meet_a_criteria & meet_R_criteria
+            stars_with_Earths = sum(habitable_planets.sum(axis=1) > 0)
+            print(stars_with_Earths)
 
     # Erase semi-major axis of non-existant planets
     for i in range(0, nstars):
@@ -303,6 +329,17 @@ def generate_planets(
             )
         )
     print("{0:d} planets generated after imposing stability limits.".format(nplanets))
+
+    # Number of Earth-like planets
+    if force_earth:
+        all_a_vals = plorb[:, :, pllabel.index("a")]
+        scaled_a_vals = (all_a_vals.T / np.sqrt(stars["Lstar"].values.astype(float))).T
+        meet_a_criteria = (0.95 <= scaled_a_vals) & (scaled_a_vals < 1.67)
+        all_R_vals = plorb[:, :, pllabel.index("R")]
+        meet_R_criteria = (0.8 < all_R_vals) & (all_R_vals < 1.4)
+        habitable_planets = meet_a_criteria & meet_R_criteria
+        stars_with_habitable_planets = sum(habitable_planets.sum(axis=1) > 0)
+        print(f"{stars_with_habitable_planets} stars with Earth-like planets")
 
     # Randomly assign all planets an albedo file
     print("Assigning planet types/albedos based albedo_list.csv...")
@@ -356,11 +393,12 @@ def load_occurrence_rates(subdivide=1, bound="", mass=True, usebins=False):
         max(1, subdivide), 10
     )  # Keep the occurrence rate grid a reasonable size.
 
-    filename = "occurrence_rates/NominalOcc_" + tag + ".csv"
+    base_path = str(resources.files("ExoVista").joinpath("data/occurrence_rates/"))
+    filename = base_path + "/NominalOcc_" + tag + ".csv"
     if bound == "lower":
-        filename = "occurrence_rates/PessimisticOcc_" + tag + ".csv"
+        filename = base_path + "/PessimisticOcc_" + tag + ".csv"
     if bound == "upper":
-        filename = "occurrence_rates/OptimisticOcc_" + tag + ".csv"
+        filename = base_path + "/OptimisticOcc_" + tag + ".csv"
 
     return load_occurrence_ratesMA(filename, subdivide=subdivide, usebins=usebins)
 
@@ -468,7 +506,15 @@ def load_occurrence_ratesMA(filename, subdivide=1, usebins=False):
 
 
 def add_planets(
-    stars, plorb, expected, orM_array, ora_array, hillsphere_flag, randrad, rng
+    stars,
+    plorb,
+    expected,
+    orM_array,
+    ora_array,
+    hillsphere_flag,
+    randrad,
+    rng,
+    force_earth,
 ):
     plorb = plorb
     nstars = len(stars)
@@ -566,9 +612,88 @@ def add_planets(
 
     # Randomly assign to stars and sort by semi-major axis
     starindices = np.vectorize(int)(rng.random(nplanets) * nstars)
+
+    if force_earth:
+        # Set up the habitable zone ranges
+        hab_a_range = [0.95, 1.67]
+        hab_R_range = [0.8, 1.4]
+        # Create a planet in the habitable zone for each star and add it to the list
+        for star_ind in range(nstars):
+            # Check whether the star has a planet in the habitable zone
+            star_planets = temp_planets[starindices == star_ind]
+            star_has_planets = star_planets.shape[0] > 0
+            if not star_has_planets:
+                # print(f"star {star_ind} has no planets")
+                continue
+            star_has_habitable_planet = False
+            # Loop through all planets of the star
+            for planet_ind in range(star_planets.shape[0]):
+                # Check if the planet is in the habitable zone
+                planet_data = star_planets[planet_ind]
+                planet_a = planet_data[pllabel.index("a")]
+                scaled_a = planet_a / np.sqrt(stars["Lstar"][star_ind])
+                planet_R = planet_data[pllabel.index("R")]
+                habitable_a = hab_a_range[0] <= scaled_a < hab_a_range[1]
+                habitable_R = hab_R_range[0] <= planet_R < hab_R_range[1]
+                hab_planet = habitable_a and habitable_R
+                # If planet is habitable, break the loop
+                if hab_planet:
+                    star_has_habitable_planet = True
+                    break
+            if not star_has_habitable_planet:
+                # If no habitable planet was found, add one
+                # Currently a simple random draw, should be based on occurrence
+                # rates
+                hab_planet = np.zeros(8)
+                _a = np.random.uniform(hab_a_range[0], hab_a_range[1])
+
+                # Repeatedly draw a mass until a habitable planet is found
+                habitable_mass = False
+                while not habitable_mass:
+                    _M = np.random.uniform(0, 5)
+                    _R = mass_to_radius(np.array([_M]), rng, np.array([_a]), randrad)
+                    habitable_mass = hab_R_range[0] <= _R < hab_R_range[1]
+
+                # Randomize the other parameters
+                _w = np.random.uniform(0, 360)
+                _W = np.random.uniform(0, 360)
+                _M0 = np.random.uniform(0, 360)
+                _e = np.random.uniform(settings.emin, settings.emax)
+                _i = np.random.uniform(settings.imin, settings.imax)
+
+                # Create the planet's array
+                hab_planet[pllabel.index("a")] = _a
+                hab_planet[pllabel.index("M")] = _M
+                hab_planet[pllabel.index("R")] = _R
+                hab_planet[pllabel.index("e")] = _e
+                hab_planet[pllabel.index("i")] = _i
+                hab_planet[pllabel.index("argperi")] = _w
+                hab_planet[pllabel.index("longnode")] = _W
+                hab_planet[pllabel.index("meananom")] = _M0
+
+                if star_has_planets:
+                    # Find the closest planet to the habitable planet
+                    # and replace it with the habitable planet
+                    close_ind = np.argmin(
+                        np.abs(star_planets[:, pllabel.index("a")] - _a)
+                    )
+                    close_star_ind = np.argwhere(starindices == star_ind)[close_ind, 0]
+                    # Add the habitable planet
+                    temp_planets[close_star_ind] = hab_planet
+                    # print(f"Added Earth to star {star_ind}")
+                else:
+                    temp_planets = np.append(
+                        temp_planets, hab_planet.reshape(1, 8), axis=0
+                    )
+                    # Add the star index to the list
+                    starindices = np.append(starindices, star_ind)
+                    # print(f"Added Earth to star {star_ind}")
+            # else:
+            # print(f"No planet added to star {star_ind}")
+    # scale by sqrt(Lstar)
     temp_planets[:, pllabel.index("a")] *= np.sqrt(
         np.array(stars["Lstar"].loc[starindices].values).astype(float)
-    )  # scale by sqrt(Lstar)
+    )
 
     isum = 0
 
@@ -597,16 +722,15 @@ def add_planets(
                 plorb[i, 0 : len(alist)] = temp_planets2
             else:
                 plorb[i] = temp_planets2[0:maxnplanets]
-            hillsphere_flag[
-                i
-            ] = True  # any star w/ a planet added needs recalculation of hill spheres
+            # any star w/ a planet added needs recalculation of hill spheres
+            hillsphere_flag[i] = True
 
     # print('{0:d} planets created.'.format(isum))
 
     return plorb, hillsphere_flag
 
 
-def remove_unstable_planets(stars, plorb, hillsphere_flag):
+def remove_unstable_planets(stars, plorb, hillsphere_flag, force_earth=False):
 
     nstars = len(stars)
     mhs_factor = 6  # Dulz et al use 9, but that takes a really
@@ -635,8 +759,29 @@ def remove_unstable_planets(stars, plorb, hillsphere_flag):
                     * (threestarmass_EM / (Mout + Min)) ** (1.0 / 3.0)
                 )
 
-                if mutual_hill_sphere < mhs_factor:  # erase the less massive planet
-                    if Mout > Min:
+                if force_earth:
+                    Rin = plorb[i, j, pllabel.index("R")]
+                    Rout = plorb[i, j + 1, pllabel.index("R")]
+                    scaled_ain = ain / np.sqrt(stars["Lstar"][i])
+                    scaled_aout = aout / np.sqrt(stars["Lstar"][i])
+                    in_is_Earth = (0.95 <= scaled_ain < 1.67) and (0.8 <= Rin < 1.4)
+                    out_is_Earth = (0.95 <= scaled_aout < 1.67) and (0.8 <= Rout < 1.4)
+                    either_is_Earth = in_is_Earth or out_is_Earth
+                else:
+                    either_is_Earth = False
+
+                # erase the less massive planet
+                if mutual_hill_sphere < mhs_factor:
+                    if either_is_Earth:
+                        # print("Not removing Earth")
+                        # if in_is_Earth:
+                        if in_is_Earth:
+                            # Remove outer planet
+                            j0 = j + 1
+                        else:
+                            # Remove inner planet
+                            j0 = j
+                    elif Mout > Min:
                         j0 = j
                     else:
                         j0 = j + 1
@@ -670,8 +815,12 @@ def assign_albedo_file(stars, plorb, rng):
     plalbedo = []
 
     nstars = len(stars)
-    directory = "./geometric_albedo_files/"
-    albedos = pd.read_csv("albedo_list.csv")
+    # directory = "./geometric_albedo_files/"
+    directory = str(
+        resources.files("ExoVista").joinpath("data/geometric_albedo_files/")
+    )
+    albedo_list_path = str(resources.files("ExoVista").joinpath("data/albedo_list.csv"))
+    albedos = pd.read_csv(albedo_list_path)
 
     files = albedos["Files"].values
     probs = albedos["prob"].values

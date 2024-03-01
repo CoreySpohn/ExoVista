@@ -1,10 +1,30 @@
 import math
+from importlib import resources
 
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
 from ExoVista.constants import *
+
+
+def load_from_master(path_to_HIPs):
+
+    master_path = resources.files("ExoVista").joinpath(
+        "data/master_target_list-usingDR2-50_pc.txt"
+    )
+    master_list = load_target_list(master_path)
+    df = pd.read_csv(path_to_HIPs, header=None, names=["HIP"])
+    df["HIP"] = df["HIP"].str.replace("HIP ", "").astype(int)
+    # Convert the HIP values in df to a list
+    hip_values = df["HIP"].tolist()
+
+    # Filter master_list where its HIP column values are in the hip_values list
+    filtered_master_list = master_list[master_list["HIP"].isin(hip_values)]
+    if len(filtered_master_list) != len(hip_values):
+        missing = len(hip_values) - len(filtered_master_list)
+        print(f"WARNING: {missing} HIP values are not in the master list")
+    return filtered_master_list
 
 
 def load_target_list(target_list_file):
@@ -121,9 +141,12 @@ def load_target_list(target_list_file):
     return target_list
 
 
-def load_stars(target_list_file):
+def load_stars(target_list_file, from_master=False):
 
-    target_list = load_target_list(target_list_file)
+    if from_master:
+        target_list = load_from_master(target_list_file)
+    else:
+        target_list = load_target_list(target_list_file)
 
     # Filter down target list.
 
@@ -177,7 +200,9 @@ def load_stars(target_list_file):
     ]
 
     # Use Eric Mamajek's table of MS stars to interpolate mass and effective temperature
-    fin2 = open("mamajek_dwarf.txt")
+
+    mamajeck_path = resources.files("ExoVista").joinpath("data/mamajek_dwarf.txt")
+    fin2 = open(mamajeck_path)
     data = fin2.readlines()
     data = [d for d in data if d[0] != "#"]
     slen = len(data)
