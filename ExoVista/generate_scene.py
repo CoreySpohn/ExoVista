@@ -881,7 +881,7 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
         hdr0.comments[
             "VERSION"
         ] = "Version of code used; used for post-processing scripts."
-        hdr0["N_EXT"] = 3 + tempnp
+        hdr0["N_EXT"] = 4 + tempnp
         hdr0.comments[
             "N_EXT"
         ] = "Last extension"  # need to add this to the main header to enable extensions
