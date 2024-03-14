@@ -296,13 +296,16 @@ def generate_planets(
         # print('No increase for {0:d} iterations.\n'.format(n_nochange))
         if force_earth:
             all_a_vals = plorb[:, :, pllabel.index("a")]
-            scaled_a_vals = (
-                all_a_vals.T / np.sqrt(stars["Lstar"].values.astype(float))
-            ).T
-            meet_a_criteria = (0.95 <= scaled_a_vals) & (scaled_a_vals < 1.67)
+            # scaled_a_vals = (
+            #     all_a_vals.T / np.sqrt(stars["Lstar"].values.astype(float))
+            # ).T
+            # meet_a_criteria = (0.95 <= scaled_a_vals) & (scaled_a_vals < 1.67)
             all_R_vals = plorb[:, :, pllabel.index("R")]
-            meet_R_criteria = (0.8 <= all_R_vals) & (all_R_vals < 1.4)
-            habitable_planets = meet_a_criteria & meet_R_criteria
+            # meet_R_criteria = (0.8 <= all_R_vals) & (all_R_vals < 1.4)
+            # habitable_planets = meet_a_criteria & meet_R_criteria
+            habitable_planets = classify_earth(
+                all_a_vals, all_R_vals, stars["Lstar"].values.astype(float)
+            )
             stars_with_Earths = sum(habitable_planets.sum(axis=1) > 0)
             print(stars_with_Earths)
 
@@ -361,7 +364,6 @@ def generate_planets(
 
 
 def load_occurrence_rates(subdivide=1, bound="", mass=True, usebins=False):
-
     # Note: I turned this into a wrapper for separate read-in functions because
     # I could not follow the "use r and p as variables no matter what quantities we're working with" notation.
 
@@ -404,7 +406,6 @@ def load_occurrence_rates(subdivide=1, bound="", mass=True, usebins=False):
 
 
 def load_occurrence_ratesMA(filename, subdivide=1, usebins=False):
-
     data = pd.read_csv(filename)
     data.columns = data.columns.str.replace(" ", "")
 
@@ -616,7 +617,7 @@ def add_planets(
     if force_earth:
         # Set up the habitable zone ranges
         hab_a_range = [0.95, 1.67]
-        hab_R_range = [0.8, 1.4]
+        # hab_R_range = [0.8, 1.4]
         # Create a planet in the habitable zone for each star and add it to the list
         for star_ind in range(nstars):
             # Check whether the star has a planet in the habitable zone
@@ -631,11 +632,15 @@ def add_planets(
                 # Check if the planet is in the habitable zone
                 planet_data = star_planets[planet_ind]
                 planet_a = planet_data[pllabel.index("a")]
-                scaled_a = planet_a / np.sqrt(stars["Lstar"][star_ind])
+                # scaled_a = planet_a / np.sqrt(stars["Lstar"][star_ind])
                 planet_R = planet_data[pllabel.index("R")]
-                habitable_a = hab_a_range[0] <= scaled_a < hab_a_range[1]
-                habitable_R = hab_R_range[0] <= planet_R < hab_R_range[1]
-                hab_planet = habitable_a and habitable_R
+                # habitable_a = hab_a_range[0] <= scaled_a < hab_a_range[1]
+                # habitable_R = hab_R_range[0] <= planet_R < hab_R_range[1]
+                # hab_planet = habitable_a and habitable_R
+                hab_planet = classify_earth(
+                    planet_a, planet_R, stars["Lstar"][star_ind].astype(float)
+                )
+
                 # If planet is habitable, break the loop
                 if hab_planet:
                     star_has_habitable_planet = True
@@ -649,10 +654,14 @@ def add_planets(
 
                 # Repeatedly draw a mass until a habitable planet is found
                 habitable_mass = False
+                # lower_R = 0.8 / np.sqrt(_a)
+                # upper_R = 1.4
                 while not habitable_mass:
                     _M = np.random.uniform(0, 5)
                     _R = mass_to_radius(np.array([_M]), rng, np.array([_a]), randrad)
-                    habitable_mass = hab_R_range[0] <= _R < hab_R_range[1]
+                    # Before luminosity scaling
+                    habitable_mass = classify_earth(np.array([_a]), _R)
+                    # habitable_mass = (lower_R <= _R) & (_R < upper_R)
 
                 # Randomize the other parameters
                 _w = np.random.uniform(0, 360)
@@ -731,7 +740,6 @@ def add_planets(
 
 
 def remove_unstable_planets(stars, plorb, hillsphere_flag, force_earth=False):
-
     nstars = len(stars)
     mhs_factor = 6  # Dulz et al use 9, but that takes a really
     # long time to cram them in. So we speed things
@@ -760,13 +768,18 @@ def remove_unstable_planets(stars, plorb, hillsphere_flag, force_earth=False):
                 )
 
                 if force_earth:
+                    _as = np.array([ain, aout])
                     Rin = plorb[i, j, pllabel.index("R")]
                     Rout = plorb[i, j + 1, pllabel.index("R")]
-                    scaled_ain = ain / np.sqrt(stars["Lstar"][i])
-                    scaled_aout = aout / np.sqrt(stars["Lstar"][i])
-                    in_is_Earth = (0.95 <= scaled_ain < 1.67) and (0.8 <= Rin < 1.4)
-                    out_is_Earth = (0.95 <= scaled_aout < 1.67) and (0.8 <= Rout < 1.4)
-                    either_is_Earth = in_is_Earth or out_is_Earth
+                    _Rs = np.array([Rin, Rout])
+                    earths = classify_earth(_as, _Rs, stars["Lstar"].loc[i])
+                    in_is_Earth = earths[0]
+                    either_is_Earth = earths.any()
+                    # scaled_ain = ain / np.sqrt(stars["Lstar"][i])
+                    # scaled_aout = aout / np.sqrt(stars["Lstar"][i])
+                    # in_is_Earth = (0.95 <= scaled_ain < 1.67) and (0.8 <= Rin < 1.4)
+                    # out_is_Earth = (0.95 <= scaled_aout < 1.67) and (0.8 <= Rout < 1.4)
+                    # either_is_Earth = in_is_Earth or out_is_Earth
                 else:
                     either_is_Earth = False
 
@@ -885,3 +898,17 @@ def assign_albedo_file(stars, plorb, rng):
             plalbedo[i].append(flist[findex])
 
     return plalbedo
+
+
+def classify_earth(a, R, Lstar=1):
+    # Set up the habitable zone ranges
+    lower_a = 0.95
+    upper_a = 1.67
+    upper_R = 1.4
+
+    # Check if the planet is in the habitable zone
+    scaled_a = (a.T / np.sqrt(Lstar)).T
+    lower_R = 0.8 / np.sqrt(scaled_a)
+    habitable_a = (lower_a <= scaled_a) & (scaled_a < upper_a)
+    habitable_R = (lower_R <= R) & (R < upper_R)
+    return habitable_a & habitable_R

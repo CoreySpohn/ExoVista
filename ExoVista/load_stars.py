@@ -14,7 +14,9 @@ def load_from_master(path_to_HIPs):
         "data/master_target_list-usingDR2-50_pc.txt"
     )
     master_list = load_target_list(master_path)
-    df = pd.read_csv(path_to_HIPs, header=None, names=["HIP"])
+    df = pd.read_csv(path_to_HIPs)
+    if "HIP" not in df.columns:
+        df = df.rename(columns={"name": "HIP"})
     df["HIP"] = df["HIP"].str.replace("HIP ", "").astype(int)
     # Convert the HIP values in df to a list
     hip_values = df["HIP"].tolist()
