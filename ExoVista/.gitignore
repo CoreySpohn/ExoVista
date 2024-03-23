@@ -1,2 +1,2 @@
-./wrapImage.cpp
-./wrapIntegrator.cpp
+wrapImage.cpp
+wrapIntegrator.cpp
