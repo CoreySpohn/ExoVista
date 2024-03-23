@@ -9,11 +9,7 @@ from ExoVista.constants import *
 
 
 def load_from_master(path_to_HIPs):
-
-    master_path = resources.files("ExoVista").joinpath(
-        "data/master_target_list-usingDR2-50_pc.txt"
-    )
-    master_list = load_target_list(master_path)
+    master_list = load_master_csv()
     df = pd.read_csv(path_to_HIPs)
     if "HIP" not in df.columns:
         df = df.rename(columns={"name": "HIP"})
@@ -29,8 +25,13 @@ def load_from_master(path_to_HIPs):
     return filtered_master_list
 
 
-def load_target_list(target_list_file):
+def load_master_csv():
+    master_path = resources.files("ExoVista").joinpath("data/master_list.csv")
+    master_list = pd.read_csv(master_path)
+    return master_list
 
+
+def load_target_list(target_list_file):
     # Read in target list.
 
     fin = open(target_list_file, "r")
@@ -144,7 +145,6 @@ def load_target_list(target_list_file):
 
 
 def load_stars(target_list_file, from_master=False):
-
     if from_master:
         target_list = load_from_master(target_list_file)
     else:

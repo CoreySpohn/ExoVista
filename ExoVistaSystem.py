@@ -4,13 +4,13 @@ from os import path
 import numpy as np
 import pandas as pd
 
-from src import Settings, generate_scene, read_solarsystem
+from ExoVista import Settings, generate_scene, read_solarsystem
 
 # ExoVista v2.4
 
 # Generates a single, user-defined planetary system.
 
-filename = "tau_ceti.dat"
+filename = "ExoVista/data/solar_system.dat"
 filein = ""
 ndisk = 2
 
